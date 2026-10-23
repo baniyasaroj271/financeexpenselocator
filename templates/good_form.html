@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}{{ page_title }}{% endblock %}
+{% block content %}
+<div class="page-container goods-page"><div class="section-heading"><div><p class="eyebrow">Personal inventory</p><h1>{{ page_title }}</h1><p class="subheading">Capture the details that make your inventory useful.</p></div><a class="secondary-button" href="{{ url_for('main.goods') }}">Cancel</a></div>{% with messages = get_flashed_messages(with_categories=true) %}{% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}{% endwith %}
+<form class="panel transaction-form" method="post" enctype="multipart/form-data"><input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"><div class="form-grid">
+<div class="form-field wide"><label for="name">Product name *</label><input id="name" name="name" required maxlength="160" value="{{ request.form.get('name', good.name if good else '') }}"></div>
+<div class="form-field"><label for="category">Category *</label><input id="category" name="category" list="goods-categories" required maxlength="80" value="{{ request.form.get('category', good.category if good else '') }}"><datalist id="goods-categories">{% for category in categories %}<option value="{{ category }}">{% endfor %}</datalist></div>
+<div class="form-field"><label for="vendor">Vendor</label><input id="vendor" name="vendor" maxlength="120" value="{{ request.form.get('vendor', good.vendor if good else '') }}"></div>
+<div class="form-field"><label for="purchase_price">Purchase price *</label><input id="purchase_price" name="purchase_price" type="number" min="0" step="0.01" required value="{{ request.form.get('purchase_price', good.unit_price if good else '') }}"></div>
+<div class="form-field"><label for="quantity">Quantity *</label><input id="quantity" name="quantity" type="number" min="1" max="100000" required value="{{ request.form.get('quantity', good.quantity if good else 1) }}"></div>
+<div class="form-field"><label for="purchase_date">Purchase date *</label><input id="purchase_date" name="purchase_date" type="date" required value="{{ request.form.get('purchase_date', good.purchase_date if good else '') }}"></div>
+<div class="form-field"><label for="warranty_expiry">Warranty expiry</label><input id="warranty_expiry" name="warranty_expiry" type="date" value="{{ request.form.get('warranty_expiry', good.warranty_expiry if good else '') }}"></div>
+<div class="form-field"><label for="estimated_value">Estimated current value *</label><input id="estimated_value" name="estimated_value" type="number" min="0" step="0.01" required value="{{ request.form.get('estimated_value', good.estimated_value if good else '') }}"></div>
+<div class="form-field wide"><label for="photo">Product photo</label><input id="photo" name="photo" type="file" accept=".png,.jpg,.jpeg,.webp"><small>PNG, JPG, JPEG, or WEBP. Maximum 5 MB.{% if good and good.photo_path %} Existing photo will be kept unless replaced.{% endif %}</small></div>
+<div class="form-field wide"><label for="receipt">Purchase receipt</label><input id="receipt" name="receipt" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp"><small>PDF or image file. Maximum 5 MB.</small></div>
+<div class="form-field wide"><label for="notes">Notes</label><textarea id="notes" name="notes" rows="4" maxlength="2000">{{ request.form.get('notes', good.notes if good else '') }}</textarea></div>
+</div><div class="form-actions"><a class="secondary-button" href="{{ url_for('main.goods') }}">Cancel</a><button class="primary-button" type="submit">{{ 'Save changes' if good else 'Add good' }}</button></div></form></div>
+{% endblock %}

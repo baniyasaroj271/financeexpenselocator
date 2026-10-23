@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}{{ page_title }}{% endblock %}
+{% block content %}
+<div class="page-container transaction-page">
+    <div class="section-heading"><div><p class="eyebrow">Money management</p><h1>{{ page_title }}</h1><p class="subheading">Keep every income and expense detail organized.</p></div><a class="secondary-button" href="{{ url_for('main.transactions') }}">Cancel</a></div>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}
+    {% endwith %}
+    <form class="panel transaction-form" method="post" enctype="multipart/form-data">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <div class="form-grid">
+            <div class="form-field wide"><label for="description">Description *</label><input id="description" name="description" required maxlength="160" value="{{ request.form.get('description', transaction.title if transaction else '') }}"></div>
+            <div class="form-field"><label for="amount">Amount *</label><input id="amount" name="amount" type="number" min="0.01" step="0.01" required value="{{ request.form.get('amount', transaction.amount if transaction else '') }}"></div>
+            <div class="form-field"><label for="transaction_type">Type *</label><select id="transaction_type" name="transaction_type" required><option value="">Choose type</option>{% for value in ['expense', 'income'] %}<option value="{{ value }}" {% if request.form.get('transaction_type', transaction.transaction_type if transaction else '') == value %}selected{% endif %}>{{ value.title() }}</option>{% endfor %}</select></div>
+            <div class="form-field"><label for="category">Category *</label><input id="category" name="category" list="category-options" required maxlength="80" value="{{ request.form.get('category', transaction.category if transaction else '') }}"><datalist id="category-options">{% for category in categories %}<option value="{{ category }}">{% endfor %}</datalist><small>Choose an existing category or type a custom one.</small></div>
+            <div class="form-field"><label for="vendor">Vendor</label><input id="vendor" name="vendor" maxlength="120" value="{{ request.form.get('vendor', transaction.vendor if transaction else '') }}"></div>
+            <div class="form-field"><label for="transaction_date">Date *</label><input id="transaction_date" name="transaction_date" type="date" required value="{{ request.form.get('transaction_date', transaction.transaction_date if transaction else '') }}"></div>
+            <div class="form-field"><label for="payment_method">Payment method *</label><select id="payment_method" name="payment_method" required>{% for value in payment_methods %}<option value="{{ value }}" {% if request.form.get('payment_method', transaction.payment_method if transaction else 'cash') == value %}selected{% endif %}>{{ value.replace('_', ' ').title() }}</option>{% endfor %}</select></div>
+            <div class="form-field wide"><label for="tags">Tags</label><input id="tags" name="tags" placeholder="travel, reimbursable, business" maxlength="500" value="{{ request.form.get('tags', transaction.tags if transaction else '') }}"><small>Separate custom tags with commas.</small></div>
+            <div class="form-field wide"><label for="notes">Notes</label><textarea id="notes" name="notes" maxlength="2000" rows="4">{{ request.form.get('notes', transaction.notes if transaction else '') }}</textarea></div>
+            <div class="form-field wide"><label for="receipt">Receipt attachment</label><input id="receipt" name="receipt" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp"><small>Optional PDF or image, maximum 5 MB.{% if transaction and transaction.receipt_path %} Existing receipt will be kept unless a new one is uploaded.{% endif %}</small></div>
+        </div>
+        <div class="form-actions"><a class="secondary-button" href="{{ url_for('main.transactions') }}">Cancel</a><button class="primary-button" type="submit">{{ 'Save changes' if transaction else 'Add transaction' }}</button></div>
+    </form>
+</div>
+{% endblock %}

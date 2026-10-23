@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="HisabSmart personal finance dashboard">
+    <title>{% block title %}Dashboard{% endblock %} · HisabSmart</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% if g.user %}<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>{% endif %}
+</head>
+<body>
+{% if g.user %}
+    <div class="app-shell">
+        <aside class="sidebar" id="sidebar">
+            <a class="brand" href="{{ url_for('main.dashboard') }}" aria-label="HisabSmart home">
+                <span class="brand-mark">H</span>
+                <span>hisab<span>smart</span></span>
+            </a>
+            <div class="sidebar-label">Workspace</div>
+            <nav class="main-nav" aria-label="Main navigation">
+                <a class="nav-item {% if request.endpoint == 'main.dashboard' %}active{% endif %}" href="{{ url_for('main.dashboard') }}">
+                    <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 13h6V4H4v9Zm0 7h6v-4H4v4Zm10 0h6v-9h-6v9Zm0-16v4h6V4h-6Z"/></svg>
+                    Overview
+                </a>
+                <a class="nav-item {% if request.endpoint in ['main.transactions', 'main.edit_transaction'] %}active{% endif %}" href="{{ url_for('main.transactions') }}">
+                    <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M7 3h10v2H7V3Zm-2 4h14v14H5V7Zm3 3v2h8v-2H8Zm0 4v2h5v-2H8Z"/></svg>
+                    Transactions
+                </a>
+                <a class="nav-item {% if request.endpoint in ['main.goods', 'main.new_good', 'main.good_detail', 'main.edit_good'] %}active{% endif %}" href="{{ url_for('main.goods') }}">
+                    <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5h16v14H4V5Zm2 3v8h12V8H6Zm2 2h4v2H8v-2Zm0 3h7v2H8v-2Z"/></svg>
+                    Goods inventory
+                </a>
+                <a class="nav-item" href="#reports">
+                    <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 19V5h2v14H5Zm6 0V9h2v10h-2Zm6 0V3h2v16h-2Z"/></svg>
+                    Reports
+                </a>
+            </nav>
+            <div class="sidebar-label">Manage</div>
+            <nav class="main-nav" aria-label="Management navigation">
+                <a class="nav-item" href="#accounts">
+                    <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3 3 8v2h18V8l-9-5Zm-6 9v6H4v2h16v-2h-2v-6h-2v6h-3v-6h-2v6H8v-6H6Z"/></svg>
+                    Accounts
+                </a>
+                <a class="nav-item" href="#settings">
+                    <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m19.4 13 .1-1-.1-1 2-1.5-2-3.4-2.3 1a7.8 7.8 0 0 0-1.7-1L15.1 3h-4.2l-.3 2.1a7.8 7.8 0 0 0-1.7 1l-2.3-1-2 3.4 2 1.5-.1 1 .1 1-2 1.5 2 3.4 2.3-1c.5.4 1.1.7 1.7 1l.3 2.1h4.2l.3-2.1c.6-.3 1.2-.6 1.7-1l2.3 1 2-3.4-2-1.5ZM13 15h-2v-2h2v2Zm0-4h-2V7h2v4Z"/></svg>
+                    Settings
+                </a>
+            </nav>
+            <div class="sidebar-bottom">
+                <div class="upgrade-card">
+                    <div class="upgrade-icon">✦</div>
+                    <strong>Unlock more with Pro</strong>
+                    <p>Get smarter insights on every rupee.</p>
+                    <button class="text-button">Explore Pro <span>→</span></button>
+                </div>
+                <div class="user-mini">
+                    <div class="avatar">{{ g.user.full_name[:2]|upper }}</div>
+                    <div><strong>{{ g.user.full_name }}</strong><small>{{ g.user.email }}</small></div>
+                    <form method="post" action="{{ url_for('auth.logout') }}">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                        <button class="more-button" type="submit" aria-label="Log out">↪</button>
+                    </form>
+                </div>
+            </div>
+        </aside>
+        <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+        <main class="main-content">
+            <header class="topbar">
+                <button class="icon-button menu-button" id="menuButton" aria-label="Open navigation">
+                    <span></span><span></span><span></span>
+                </button>
+                <div class="breadcrumb"><span>Workspace</span><b>/</b> Overview</div>
+                <div class="topbar-actions">
+                    <button class="icon-button notification-button" aria-label="Notifications">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Zm-8 12h4"/></svg>
+                        <i></i>
+                    </button>
+                    <button class="avatar top-avatar" aria-label="Open profile">AS</button>
+                </div>
+            </header>
+        </main>
+    </div>
+{% else %}
+    <main class="auth-main">
+{% endif %}
+{% block content %}{% endblock %}
+{% if not g.user %}</main>{% endif %}
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

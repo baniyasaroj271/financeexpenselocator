@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Transactions{% endblock %}
+{% block content %}
+<div class="page-container transaction-page">
+    <section class="section-heading"><div><p class="eyebrow">Money management</p><h1>Transactions</h1><p class="subheading">Add, review, and organize every income and expense.</p></div><a class="primary-button" href="{{ url_for('main.new_transaction') }}"><span>+</span> Add transaction</a></section>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}
+    {% endwith %}
+    <section class="panel transaction-toolbar">
+        <form method="get" class="transaction-filters">
+            <label class="search-field"><span>⌕</span><input name="q" value="{{ filters.get('q', '') }}" placeholder="Search description, vendor, notes, or tags"></label>
+            <select name="type" aria-label="Filter by type"><option value="">All types</option>{% for value in ['expense', 'income'] %}<option value="{{ value }}" {% if filters.get('type') == value %}selected{% endif %}>{{ value.title() }}</option>{% endfor %}</select>
+            <select name="category" aria-label="Filter by category"><option value="">All categories</option>{% for category in categories %}<option value="{{ category }}" {% if filters.get('category') == category %}selected{% endif %}>{{ category }}</option>{% endfor %}</select>
+            <select name="payment_method" aria-label="Filter by payment method"><option value="">All payment methods</option>{% for value in payment_methods %}<option value="{{ value }}" {% if filters.get('payment_method') == value %}selected{% endif %}>{{ value.replace('_', ' ').title() }}</option>{% endfor %}</select>
+            <select name="sort" aria-label="Sort transactions"><option value="date_desc" {% if filters.get('sort', 'date_desc') == 'date_desc' %}selected{% endif %}>Newest first</option><option value="date_asc" {% if filters.get('sort') == 'date_asc' %}selected{% endif %}>Oldest first</option><option value="amount_desc" {% if filters.get('sort') == 'amount_desc' %}selected{% endif %}>Highest amount</option><option value="amount_asc" {% if filters.get('sort') == 'amount_asc' %}selected{% endif %}>Lowest amount</option><option value="description" {% if filters.get('sort') == 'description' %}selected{% endif %}>Description A–Z</option></select>
+            <button class="apply-filter" type="submit">Apply</button>
+        </form>
+    </section>
+    <section class="panel transactions-table-panel">
+        <div class="panel-header"><div><h2>All transactions</h2><p>{{ transactions|length }} result{{ '' if transactions|length == 1 else 's' }} for your account</p></div></div>
+        <div class="table-wrap"><table class="full-transactions"><thead><tr><th>DESCRIPTION</th><th>TYPE</th><th>CATEGORY</th><th>VENDOR</th><th>DATE</th><th>PAYMENT</th><th>AMOUNT</th><th>ACTIONS</th></tr></thead><tbody>
+        {% for transaction in transactions %}<tr><td><strong>{{ transaction.title }}</strong>{% if transaction.tags %}<small class="table-tags">{{ transaction.tags }}</small>{% endif %}</td><td><span class="type-pill {{ transaction.transaction_type }}">{{ transaction.transaction_type.title() }}</span></td><td><span class="category-pill">{{ transaction.category }}</span></td><td>{{ transaction.vendor or '—' }}</td><td>{{ transaction.transaction_date }}</td><td>{{ transaction.payment_method.replace('_', ' ').title() }}</td><td class="{{ transaction.transaction_type }}">{{ '+' if transaction.transaction_type == 'income' else '-' }}₹{{ '%.2f'|format(transaction.amount) }}</td><td><div class="row-actions"><a href="{{ url_for('main.edit_transaction', transaction_id=transaction.id) }}">Edit</a><form method="post" action="{{ url_for('main.delete_transaction', transaction_id=transaction.id) }}" onsubmit="return confirm('Delete this transaction?');"><input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"><button type="submit">Delete</button></form>{% if transaction.receipt_path %}<a href="{{ url_for('main.transaction_receipt', transaction_id=transaction.id) }}">Receipt</a>{% endif %}</div></td></tr>
+        {% else %}<tr><td colspan="8" class="empty-state">No transactions match your filters.</td></tr>{% endfor %}
+        </tbody></table></div>
+    </section>
+</div>
+{% endblock %}

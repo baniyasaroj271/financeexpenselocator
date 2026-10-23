@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="page-container dashboard-page">
+    <section class="welcome-row">
+        <div>
+            <p class="eyebrow">{{ start }} to {{ end }}</p>
+            <h1>Good morning, {{ g.user.full_name.split()[0] }} <span class="wave">✦</span></h1>
+            <p class="subheading">A clear view of your money, inventory, and progress.</p>
+        </div>
+        <a class="primary-button" href="#transactions"><span>+</span> Add transaction</a>
+    </section>
+
+    <form class="filter-bar" method="get" action="{{ url_for('main.dashboard') }}">
+        <div class="filter-label"><span class="filter-icon">◷</span><strong>Date range</strong></div>
+        <div class="filter-options" role="group" aria-label="Date range">
+            {% for option, label in [('daily', 'Daily'), ('weekly', 'Weekly'), ('monthly', 'Monthly'), ('yearly', 'Yearly'), ('custom', 'Custom')] %}
+            <button class="filter-option {% if period == option %}active{% endif %}" type="submit" name="period" value="{{ option }}">{{ label }}</button>
+            {% endfor %}
+        </div>
+        <div class="custom-dates {% if period != 'custom' %}hidden{% endif %}">
+            <label>From <input type="date" name="start" value="{{ request.args.get('start', '') }}"></label>
+            <label>To <input type="date" name="end" value="{{ request.args.get('end', '') }}"></label>
+            <button class="apply-filter" type="submit" name="period" value="custom">Apply</button>
+        </div>
+    </form>
+
+    <section class="stats-grid dashboard-stats" aria-label="Financial summary">
+        <article class="stat-card balance-card"><div class="stat-heading"><span>Total income</span><span class="stat-icon income-icon">↙</span></div><div class="amount large-amount">₹{{ '%.2f'|format(dashboard.income) }}</div><p class="stat-caption">Money received in this period</p></article>
+        <article class="stat-card"><div class="stat-heading"><span>Total expenses</span><span class="stat-icon expense-icon">↗</span></div><div class="amount">₹{{ '%.2f'|format(dashboard.expenses) }}</div><p class="stat-caption">Money spent in this period</p></article>
+        <article class="stat-card"><div class="stat-heading"><span>Remaining budget</span><span class="stat-icon savings-icon">✓</span></div><div class="amount">₹{{ '%.2f'|format(dashboard.remaining_budget) }}</div><p class="stat-caption">Across all your budgets</p></article>
+        <article class="stat-card"><div class="stat-heading"><span>Net cash flow</span><span class="stat-icon savings-icon">↗</span></div><div class="amount {% if dashboard.cash_flow < 0 %}amount-negative{% endif %}">₹{{ '%.2f'|format(dashboard.cash_flow) }}</div><p class="stat-caption">Income minus expenses</p></article>
+        <article class="stat-card inventory-stat"><div class="stat-heading"><span>Total goods owned</span><span class="stat-icon income-icon">▦</span></div><div class="amount">{{ dashboard.goods_count }}</div><p class="stat-caption">Items in your inventory</p></article>
+        <article class="stat-card inventory-stat"><div class="stat-heading"><span>Inventory purchase value</span><span class="stat-icon expense-icon">₹</span></div><div class="amount">₹{{ '%.2f'|format(dashboard.inventory_value) }}</div><p class="stat-caption">Current recorded cost</p></article>
+    </section>
+
+    <section class="chart-grid">
+        <article class="panel chart-panel trend-panel"><div class="panel-header"><div><h2>Spending trend</h2><p>Income and expenses across the selected range</p></div></div><div class="chart-wrap"><canvas id="trendChart"></canvas></div></article>
+        <article class="panel chart-panel"><div class="panel-header"><div><h2>Spending by category</h2><p>Where your expenses are going</p></div></div><div class="donut-wrap"><canvas id="categoryChart"></canvas>{% if not dashboard.categories %}<span class="empty-chart">No expenses in this range</span>{% endif %}</div></article>
+    </section>
+
+    <section class="content-grid">
+        <article class="panel budgets-panel" id="budgets"><div class="panel-header"><div><h2>Budget progress</h2><p>Keep your spending on track</p></div></div>
+            <div class="budget-list">{% for budget in dashboard.budgets %}<div class="budget-item"><div class="budget-label"><span class="category-dot dot-{{ loop.index }}"></span><strong>{{ budget.category }}</strong><span class="budget-amount">₹{{ '%.0f'|format(budget.spent) }} / ₹{{ '%.0f'|format(budget.limit_amount) }}</span></div><div class="progress-track"><span class="progress-fill fill-{{ loop.index }}" style="width: {{ [budget.spent / budget.limit_amount * 100, 100]|min|round|int if budget.limit_amount else 0 }}%"></span></div></div>{% else %}<div class="empty-state">No budgets created yet.</div>{% endfor %}</div>
+        </article>
+        <article class="panel transactions-panel" id="transactions"><div class="panel-header"><div><h2>Recent transactions</h2><p>Filtered to your selected date range</p></div></div>
+            <div class="table-wrap"><table><thead><tr><th>TRANSACTION</th><th>CATEGORY</th><th>DATE</th><th>AMOUNT</th></tr></thead><tbody>{% for transaction in dashboard.transactions %}<tr><td><span class="transaction-icon {{ transaction.transaction_type }}">{{ '↙' if transaction.transaction_type == 'income' else '↗' }}</span><strong>{{ transaction.title }}</strong></td><td><span class="category-pill">{{ transaction.category }}</span></td><td>{{ transaction.transaction_date }}</td><td class="{{ transaction.transaction_type }}">{{ '+' if transaction.transaction_type == 'income' else '-' }}₹{{ '%.2f'|format(transaction.amount) }}</td></tr>{% else %}<tr><td colspan="4" class="empty-state">No transactions in this range.</td></tr>{% endfor %}</tbody></table></div>
+        </article>
+    </section>
+</div>
+<script id="dashboard-data" type="application/json">{{ dashboard|tojson }}</script>
+{% endblock %}
