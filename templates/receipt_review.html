@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Review scanned receipt{% endblock %}
+{% block content %}
+<div class="page-container receipt-page"><section class="section-heading"><div><p class="eyebrow">Review before saving</p><h1>Check extracted details</h1><p class="subheading">OCR is an assistant. Correct anything that looks unclear before creating records.</p></div><a class="secondary-button" href="{{ url_for('main.scan_receipt') }}">Scan again</a></section>
+{% with messages = get_flashed_messages(with_categories=true) %}{% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}{% endwith %}
+{% if extracted.warnings %}<div class="flash error">Some fields need your attention: {{ extracted.warnings|join(', ')|replace('_', ' ') }}.</div>{% endif %}
+<form class="review-layout" method="post"><input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"><section class="panel receipt-preview"><img src="{{ image_url }}" alt="Uploaded receipt"><a href="{{ image_url }}" target="_blank">Open original image</a></section><section class="panel review-form"><h2>Receipt details</h2><div class="form-grid"><div class="form-field wide"><label>Vendor *</label><input name="vendor" required maxlength="120" value="{{ extracted['vendor'] }}"></div><div class="form-field"><label>Date *</label><input name="transaction_date" type="date" required value="{{ extracted['date'] or '' }}"></div><div class="form-field"><label>Category</label><input name="category" maxlength="80" value="{{ extracted['suggested_category'] }}"><small>Suggested category can be changed.</small></div><div class="form-field"><label>Subtotal</label><input name="subtotal" type="number" step="0.01" value="{{ extracted['subtotal'] or '' }}"></div><div class="form-field"><label>Tax</label><input name="tax" type="number" step="0.01" value="{{ extracted['tax'] or '' }}"></div><div class="form-field"><label>Total *</label><input name="total" type="number" min="0.01" step="0.01" required value="{{ extracted['total'] or '' }}"></div><div class="form-field"><label>Payment method</label><select name="payment_method"><option value="card">Card</option><option value="cash">Cash</option><option value="bank">Bank</option><option value="digital_wallet">Digital wallet</option></select></div><div class="form-field wide"><label>Notes</label><textarea name="notes" rows="3">Scanned with OCR</textarea></div></div><h2 class="items-heading">Items <small>Select items to add to goods inventory</small></h2><div class="ocr-items">{% for item in extracted['items'] %}<label class="ocr-item"><input type="checkbox" data-item-index="{{ loop.index0 }}"><span><input class="item-name" value="{{ item['name'] }}"><small>Price ₹<input class="item-price" type="number" step="0.01" value="{{ item['price'] }}"> · Qty <input class="item-quantity" type="number" min="1" value="{{ item['quantity'] }}"></small></span></label>{% else %}<p class="empty-state">No individual items were confidently recognized. You can still save the expense.</p>{% endfor %}</div><input type="hidden" name="items_json" id="items-json"><button class="primary-button review-submit" type="submit">Save transaction</button></section></form></div>
+<script>
+document.querySelector(".review-form")?.addEventListener("submit", () => {
+  const items = [...document.querySelectorAll(".ocr-item")].map((row) => ({
+    selected: row.querySelector("input[type=checkbox]").checked ? "1" : "0",
+    name: row.querySelector(".item-name").value.trim(),
+    price: row.querySelector(".item-price").value,
+    quantity: row.querySelector(".item-quantity").value
+  }));
+  document.querySelector("#items-json").value = JSON.stringify(items);
+});
+</script>
+{% endblock %}

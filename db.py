@@ -30,6 +30,17 @@ CREATE TABLE IF NOT EXISTS transactions (
     receipt_path TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_transactions_user ON transactions(user_id);
+CREATE TABLE IF NOT EXISTS receipt_scans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    file_path TEXT NOT NULL,
+    file_hash TEXT NOT NULL,
+    extracted_json TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'review' CHECK (status IN ('review', 'saved', 'rejected')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, file_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_receipt_scans_user ON receipt_scans(user_id);
 CREATE TABLE IF NOT EXISTS transaction_categories (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -85,9 +96,24 @@ CREATE TABLE IF NOT EXISTS recurring_expenses (
     next_due_date TEXT NOT NULL,
     active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
     category TEXT NOT NULL DEFAULT 'Bills',
-    payment_method TEXT NOT NULL DEFAULT 'bank'
+    payment_method TEXT NOT NULL DEFAULT 'bank',
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paused', 'cancelled')),
+    vendor TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    price_history TEXT NOT NULL DEFAULT '[]'
 );
 CREATE INDEX IF NOT EXISTS idx_recurring_expenses_user ON recurring_expenses(user_id);
+CREATE TABLE IF NOT EXISTS recurring_payment_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    recurring_id INTEGER NOT NULL REFERENCES recurring_expenses(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    due_date TEXT NOT NULL,
+    transaction_id INTEGER REFERENCES transactions(id) ON DELETE SET NULL,
+    reminder_sent INTEGER NOT NULL DEFAULT 0 CHECK (reminder_sent IN (0, 1)),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(recurring_id, due_date)
+);
+CREATE INDEX IF NOT EXISTS idx_recurring_runs_user ON recurring_payment_runs(user_id, due_date);
 CREATE TABLE IF NOT EXISTS savings_goals (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -199,6 +225,12 @@ def migrate_legacy_tables(db: sqlite3.Connection) -> None:
         row["name"] for row in db.execute("PRAGMA table_info(budgets)").fetchall()
     }
     if budget_columns and "period" not in budget_columns:
+        legacy_columns = {
+            row["name"]
+            for row in db.execute("PRAGMA table_info(budgets_legacy)").fetchall()
+        }
+        if legacy_columns and "user_id" not in legacy_columns:
+            db.execute("DROP TABLE budgets_legacy")
         db.execute("ALTER TABLE budgets RENAME TO budgets_legacy")
     recurring_columns = {
         row["name"]
@@ -207,6 +239,10 @@ def migrate_legacy_tables(db: sqlite3.Connection) -> None:
     for name, definition in {
         "category": "TEXT NOT NULL DEFAULT 'Bills'",
         "payment_method": "TEXT NOT NULL DEFAULT 'bank'",
+        "status": "TEXT NOT NULL DEFAULT 'active'",
+        "vendor": "TEXT NOT NULL DEFAULT ''",
+        "notes": "TEXT NOT NULL DEFAULT ''",
+        "price_history": "TEXT NOT NULL DEFAULT '[]'",
     }.items():
         if recurring_columns and name not in recurring_columns:
             db.execute(f"ALTER TABLE recurring_expenses ADD COLUMN {name} {definition}")

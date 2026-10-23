@@ -24,6 +24,7 @@ def create_app(test_config: dict | None = None) -> Flask:
         MAX_CONTENT_LENGTH=5 * 1024 * 1024,
         UPLOAD_FOLDER=str(BASE_DIR / "instance" / "uploads" / "receipts"),
         GOODS_UPLOAD_FOLDER=str(BASE_DIR / "instance" / "uploads" / "goods"),
+        OCR_UPLOAD_FOLDER=str(BASE_DIR / "instance" / "uploads" / "ocr"),
     )
     if test_config:
         app.config.update(test_config)
@@ -31,10 +32,15 @@ def create_app(test_config: dict | None = None) -> Flask:
     Path(app.instance_path).mkdir(parents=True, exist_ok=True)
     Path(app.config["UPLOAD_FOLDER"]).mkdir(parents=True, exist_ok=True)
     Path(app.config["GOODS_UPLOAD_FOLDER"]).mkdir(parents=True, exist_ok=True)
+    Path(app.config["OCR_UPLOAD_FOLDER"]).mkdir(parents=True, exist_ok=True)
     app.teardown_appcontext(close_db)
     app.before_request(load_logged_in_user)
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
+    if not app.testing and app.config.get("ENABLE_SCHEDULER", True):
+        from scheduler import start_scheduler
+
+        start_scheduler(app)
 
     @app.context_processor
     def inject_template_helpers():

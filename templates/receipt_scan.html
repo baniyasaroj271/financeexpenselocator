@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}Scan receipt{% endblock %}
+{% block content %}
+<div class="page-container receipt-page"><section class="section-heading"><div><p class="eyebrow">Smart capture</p><h1>Scan a receipt</h1><p class="subheading">Upload or capture a clear receipt photo. You can review every field before it is saved.</p></div><a class="secondary-button" href="{{ url_for('main.transactions') }}">Back to transactions</a></section>
+{% with messages = get_flashed_messages(with_categories=true) %}{% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}{% endwith %}
+<form class="panel scan-upload" method="post" enctype="multipart/form-data"><input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"><label class="upload-drop"><span class="upload-mark">⌁</span><strong>Choose a receipt photo</strong><small>PNG, JPG, JPEG, or WEBP · maximum 5 MB</small><input id="receipt" name="receipt" type="file" accept="image/png,image/jpeg,image/webp" capture="environment" required></label><button class="primary-button" type="submit">Extract receipt details</button></form>
+<div class="ocr-note panel"><strong>For the clearest results</strong><span>Use even lighting, keep the whole receipt in frame, and avoid blur. Unclear fields will be marked for review.</span></div></div>
+{% endblock %}

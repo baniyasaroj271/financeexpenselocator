@@ -2,7 +2,7 @@
 {% block title %}Transactions{% endblock %}
 {% block content %}
 <div class="page-container transaction-page">
-    <section class="section-heading"><div><p class="eyebrow">Money management</p><h1>Transactions</h1><p class="subheading">Add, review, and organize every income and expense.</p></div><a class="primary-button" href="{{ url_for('main.new_transaction') }}"><span>+</span> Add transaction</a></section>
+    <section class="section-heading"><div><p class="eyebrow">Money management</p><h1>Transactions</h1><p class="subheading">Add, review, and organize every income and expense.</p></div><div class="detail-actions"><a class="secondary-button" href="{{ url_for('main.scan_receipt') }}">⌁ Scan receipt</a><a class="primary-button" href="{{ url_for('main.new_transaction') }}"><span>+</span> Add transaction</a></div></section>
     {% with messages = get_flashed_messages(with_categories=true) %}
     {% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}
     {% endwith %}
