@@ -45,14 +45,22 @@
                     <span class="stat-icon expense-icon">↗</span>
                     Analytics & reports
                 </a>
+                <a class="nav-item {% if request.endpoint == 'main.assistant' %}active{% endif %}" href="{{ url_for('main.assistant') }}">
+                    <span class="stat-icon expense-icon">✦</span>
+                    AI assistant
+                </a>
+                <a class="nav-item {% if request.endpoint in ['main.wallets', 'main.wallet_detail', 'main.invite_wallet_member', 'main.update_wallet_role', 'main.settle_wallet'] %}active{% endif %}" href="{{ url_for('main.wallets') }}">
+                    <span class="stat-icon expense-icon">◈</span>
+                    Shared wallets
+                </a>
             </nav>
             <div class="sidebar-label">Manage</div>
             <nav class="main-nav" aria-label="Management navigation">
-                <a class="nav-item" href="#accounts">
+                <a class="nav-item {% if request.endpoint == 'main.accounts' %}active{% endif %}" href="{{ url_for('main.accounts') }}">
                     <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3 3 8v2h18V8l-9-5Zm-6 9v6H4v2h16v-2h-2v-6h-2v6h-3v-6h-2v6H8v-6H6Z"/></svg>
                     Accounts
                 </a>
-                <a class="nav-item" href="#settings">
+                <a class="nav-item {% if request.endpoint == 'main.settings' %}active{% endif %}" href="{{ url_for('main.settings') }}">
                     <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m19.4 13 .1-1-.1-1 2-1.5-2-3.4-2.3 1a7.8 7.8 0 0 0-1.7-1L15.1 3h-4.2l-.3 2.1a7.8 7.8 0 0 0-1.7 1l-2.3-1-2 3.4 2 1.5-.1 1 .1 1-2 1.5 2 3.4 2.3-1c.5.4 1.1.7 1.7 1l.3 2.1h4.2l.3-2.1c.6-.3 1.2-.6 1.7-1l2.3 1 2-3.4-2-1.5ZM13 15h-2v-2h2v2Zm0-4h-2V7h2v4Z"/></svg>
                     Settings
                 </a>
@@ -93,13 +101,11 @@
                     <button class="avatar top-avatar" aria-label="Open profile">AS</button>
                 </div>
             </header>
-        </main>
-    </div>
 {% else %}
     <main class="auth-main">
 {% endif %}
 {% block content %}{% endblock %}
-{% if not g.user %}</main>{% endif %}
+{% if g.user %}</main></div>{% else %}</main>{% endif %}
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>

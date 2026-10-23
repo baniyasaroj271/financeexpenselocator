@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Shared wallets{% endblock %}
+{% block content %}
+<div class="page-container">
+<section class="section-heading"><div><p class="eyebrow">Trips · roommates · households</p><h1>Shared wallets</h1><p class="subheading">Split shared costs, see balances, and record settlements without moving money.</p></div></section>
+{% with messages = get_flashed_messages(with_categories=true) %}{% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}{% endwith %}
+<section class="wallet-layout"><div class="panel"><h2>Your wallets</h2><div class="simple-list">{% for wallet in wallets %}<div><span><strong>{{ wallet.name }}</strong><small>{{ wallet.member_count }} member{{ 's' if wallet.member_count != 1 }} · {{ wallet.role }}</small></span><a class="secondary-button" href="{{ url_for('main.wallet_detail', wallet_id=wallet.id) }}">Open</a></div>{% else %}<div class="empty-state">Create a wallet for your next trip or household.</div>{% endfor %}</div></div><form class="panel compact-form" method="post"><input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"><h2>Create a wallet</h2><label>Name <input name="name" maxlength="120" placeholder="Goa trip, Flat 4B, Family" required></label><button class="primary-button" type="submit">Create wallet</button></form></section>
+</div>
+{% endblock %}

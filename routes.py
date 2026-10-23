@@ -16,6 +16,7 @@ from flask import Blueprint, current_app, flash, g, jsonify, redirect, render_te
 from auth import login_required
 from db import get_db
 from receipt_ocr import OCRInputError, OCRUnavailableError, extract_receipt
+from financial_assistant import answer_question, build_insights
 
 
 main_bp = Blueprint("main", __name__)
@@ -40,6 +41,8 @@ GOODS_SORT_FIELDS = {
 }
 BUDGET_PERIODS = {"weekly", "monthly", "yearly"}
 GOAL_TYPES = {"savings", "emergency"}
+WALLET_ROLES = {"viewer", "editor"}
+SPLIT_METHODS = {"equal", "proportional"}
 
 
 def date_window(period: str, start_value: str | None, end_value: str | None) -> tuple[str, str]:
@@ -131,6 +134,75 @@ def transaction_categories() -> list[str]:
     ).fetchall()
     defaults = {"Food & Dining", "Transport", "Subscriptions", "Housing", "Bills & Utilities", "Health", "Income"}
     return sorted(defaults | {row["name"] for row in rows}, key=str.casefold)
+
+
+def wallet_access(wallet_id: int, minimum: str = "viewer"):
+    rank = {"viewer": 1, "editor": 2, "owner": 3}
+    return get_db().execute(
+        """
+        SELECT w.*, m.role, u.full_name AS member_name
+        FROM shared_wallets w
+        JOIN shared_wallet_members m ON m.wallet_id=w.id AND m.user_id=?
+        JOIN users u ON u.id=?
+        WHERE w.id=? AND rank(?) <= rank(m.role)
+        """.replace("rank(?) <= rank(m.role)", "? <= CASE m.role WHEN 'viewer' THEN 1 WHEN 'editor' THEN 2 WHEN 'owner' THEN 3 END"),
+        (g.user["id"], g.user["id"], wallet_id, rank[minimum]),
+    ).fetchone()
+
+
+def wallet_members(wallet_id: int):
+    return get_db().execute(
+        """
+        SELECT m.user_id, m.role, u.full_name, u.email
+        FROM shared_wallet_members m JOIN users u ON u.id=m.user_id
+        WHERE m.wallet_id=? ORDER BY CASE m.role WHEN 'owner' THEN 0 ELSE 1 END, u.full_name
+        """,
+        (wallet_id,),
+    ).fetchall()
+
+
+def wallet_balances(wallet_id: int) -> list[dict]:
+    db = get_db()
+    members = wallet_members(wallet_id)
+    balances = {row["user_id"]: {"user_id": row["user_id"], "name": row["full_name"], "paid": 0.0, "share": 0.0} for row in members}
+    expenses = db.execute(
+        "SELECT id, paid_by, amount FROM wallet_expenses WHERE wallet_id=?",
+        (wallet_id,),
+    ).fetchall()
+    for expense in expenses:
+        if expense["paid_by"] in balances:
+            balances[expense["paid_by"]]["paid"] += float(expense["amount"])
+        for split in db.execute(
+            "SELECT user_id, share_amount FROM wallet_expense_splits WHERE expense_id=?",
+            (expense["id"],),
+        ):
+            if split["user_id"] in balances:
+                balances[split["user_id"]]["share"] += float(split["share_amount"])
+    for settlement in db.execute(
+        "SELECT from_user_id, to_user_id, amount FROM wallet_settlements WHERE wallet_id=?",
+        (wallet_id,),
+    ):
+        amount = float(settlement["amount"])
+        if settlement["from_user_id"] in balances:
+            balances[settlement["from_user_id"]]["paid"] += amount
+        if settlement["to_user_id"] in balances:
+            balances[settlement["to_user_id"]]["paid"] -= amount
+    return [{**item, "balance": round(item["paid"] - item["share"], 2)} for item in balances.values()]
+
+
+def wallet_debts(wallet_id: int) -> list[dict]:
+    balances = wallet_balances(wallet_id)
+    creditors = [[item["user_id"], item["name"], item["balance"]] for item in balances if item["balance"] > 0.005]
+    debtors = [[item["user_id"], item["name"], -item["balance"]] for item in balances if item["balance"] < -0.005]
+    debts = []
+    for debtor in debtors:
+        for creditor in creditors:
+            amount = min(debtor[2], creditor[2])
+            if amount > 0.005:
+                debts.append({"from_id": debtor[0], "from_name": debtor[1], "to_id": creditor[0], "to_name": creditor[1], "amount": round(amount, 2)})
+                debtor[2] -= amount
+                creditor[2] -= amount
+    return debts
 
 
 def validate_transaction_form(form) -> tuple[dict | None, str | None]:
@@ -535,7 +607,7 @@ def validate_good_form(form):
         return None, "Product name is required and must be 160 characters or fewer."
     if not category or len(category) > 80:
         return None, "Category is required and must be 80 characters or fewer."
-    if price < 0 or estimated_value < 0 or quantity < 1 or quantity > 100000:
+    if not math.isfinite(price) or not math.isfinite(estimated_value) or price < 0 or estimated_value < 0 or quantity < 1 or quantity > 100000:
         return None, "Prices cannot be negative and quantity must be at least one."
     try:
         date.fromisoformat(purchase_date)
@@ -834,7 +906,7 @@ def validate_budget_form(form):
         rollover_amount = float(form.get("rollover_amount", "0") or 0)
     except ValueError:
         return None, "Enter valid budget amounts."
-    if period not in BUDGET_PERIODS or limit_amount < 0 or rollover_amount < 0:
+    if not math.isfinite(limit_amount) or not math.isfinite(rollover_amount) or period not in BUDGET_PERIODS or limit_amount < 0 or rollover_amount < 0:
         return None, "Choose a valid period and non-negative amounts."
     if category and len(category) > 80:
         return None, "Category must be 80 characters or fewer."
@@ -892,7 +964,7 @@ def validate_goal_form(form):
     except ValueError:
         return None, "Enter valid savings amounts."
     target_date = form.get("target_date", "").strip() or None
-    if not name or len(name) > 120 or goal_type not in GOAL_TYPES or target <= 0 or current < 0 or contribution < 0:
+    if not all(math.isfinite(value) for value in (target, current, contribution)) or not name or len(name) > 120 or goal_type not in GOAL_TYPES or target <= 0 or current < 0 or contribution < 0 or current > target:
         return None, "Enter a name, valid goal type, and non-negative amounts."
     try:
         if target_date:
@@ -970,6 +1042,209 @@ def dashboard():
         start=start,
         end=end,
     )
+
+
+@main_bp.get("/accounts")
+@login_required
+def accounts():
+    return render_template("management_placeholder.html", page_title="Accounts", eyebrow="Connected accounts", message="External bank connections are not configured. Your manually entered records remain private and available in HisabSmart.")
+
+
+@main_bp.get("/settings")
+@login_required
+def settings():
+    return render_template("management_placeholder.html", page_title="Settings", eyebrow="Your workspace", message="Your account is protected by a hashed password, server-side sessions, and CSRF-protected forms. Change the deployment secret before using HisabSmart in production.")
+
+
+@main_bp.route("/wallets", methods=("GET", "POST"))
+@login_required
+def wallets():
+    db = get_db()
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        if not name or len(name) > 120:
+            flash("Enter a wallet name of 120 characters or fewer.", "error")
+        else:
+            cursor = db.execute("INSERT INTO shared_wallets (owner_id, name) VALUES (?, ?)", (g.user["id"], name))
+            db.execute(
+                "INSERT INTO shared_wallet_members (wallet_id, user_id, role) VALUES (?, ?, 'owner')",
+                (cursor.lastrowid, g.user["id"]),
+            )
+            db.commit()
+            flash("Shared wallet created.", "success")
+            return redirect(url_for("main.wallet_detail", wallet_id=cursor.lastrowid))
+    rows = db.execute(
+        """
+        SELECT w.id, w.name, w.owner_id, m.role, COUNT(members.user_id) member_count
+        FROM shared_wallets w
+        JOIN shared_wallet_members m ON m.wallet_id=w.id AND m.user_id=?
+        JOIN shared_wallet_members members ON members.wallet_id=w.id
+        GROUP BY w.id ORDER BY w.created_at DESC
+        """,
+        (g.user["id"],),
+    ).fetchall()
+    return render_template("wallets.html", wallets=rows)
+
+
+@main_bp.route("/wallets/<int:wallet_id>", methods=("GET", "POST"))
+@login_required
+def wallet_detail(wallet_id: int):
+    access = wallet_access(wallet_id)
+    if access is None:
+        return "Wallet not found", 404
+    db = get_db()
+    if request.method == "POST":
+        if wallet_access(wallet_id, "editor") is None:
+            return "Editor permission required", 403
+        title = request.form.get("title", "").strip()
+        expense_date = request.form.get("expense_date", "").strip()
+        split_method = request.form.get("split_method", "").strip()
+        try:
+            amount = float(request.form.get("amount", ""))
+            date.fromisoformat(expense_date)
+        except (ValueError, TypeError):
+            flash("Enter a valid amount and date.", "error")
+        else:
+            member_ids = [int(value) for value in request.form.getlist("member_ids") if value.isdigit()]
+            members = wallet_members(wallet_id)
+            allowed_ids = {row["user_id"] for row in members}
+            if not math.isfinite(amount) or not title or len(title) > 160 or amount <= 0 or split_method not in SPLIT_METHODS:
+                flash("Enter a valid title, amount, and split method.", "error")
+            elif not member_ids or len(member_ids) != len(set(member_ids)) or not set(member_ids).issubset(allowed_ids):
+                flash("Choose valid wallet members for the split.", "error")
+            else:
+                proportions = {}
+                if split_method == "proportional":
+                    for member_id in member_ids:
+                        try:
+                            proportions[member_id] = float(request.form.get(f"proportion_{member_id}", ""))
+                        except ValueError:
+                            proportions[member_id] = -1
+                    if any(not math.isfinite(value) or value <= 0 for value in proportions.values()) or abs(sum(proportions.values()) - 100) > 0.01:
+                        flash("Proportional shares must be positive and total 100%.", "error")
+                        proportions = None
+                else:
+                    proportions = {member_id: 100 / len(member_ids) for member_id in member_ids}
+                if proportions is not None:
+                    cursor = db.execute(
+                        """
+                        INSERT INTO wallet_expenses
+                        (wallet_id, paid_by, title, amount, expense_date, split_method)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        (wallet_id, g.user["id"], title, amount, expense_date, split_method),
+                    )
+                    for member_id in member_ids:
+                        share = round(amount * proportions[member_id] / 100, 2)
+                        db.execute(
+                            "INSERT INTO wallet_expense_splits (expense_id, user_id, share_amount, proportion) VALUES (?, ?, ?, ?)",
+                            (cursor.lastrowid, member_id, share, proportions[member_id]),
+                        )
+                    db.commit()
+                    flash("Shared expense added.", "success")
+                    return redirect(url_for("main.wallet_detail", wallet_id=wallet_id))
+    expenses = db.execute(
+        """
+        SELECT e.*, u.full_name AS paid_by_name
+        FROM wallet_expenses e JOIN users u ON u.id=e.paid_by
+        WHERE e.wallet_id=? ORDER BY e.expense_date DESC, e.id DESC
+        """,
+        (wallet_id,),
+    ).fetchall()
+    return render_template(
+        "wallet_detail.html", wallet=access, members=wallet_members(wallet_id),
+        expenses=expenses, balances=wallet_balances(wallet_id), debts=wallet_debts(wallet_id),
+    )
+
+
+@main_bp.post("/wallets/<int:wallet_id>/invite")
+@login_required
+def invite_wallet_member(wallet_id: int):
+    if wallet_access(wallet_id, "owner") is None:
+        return "Owner permission required", 403
+    email = request.form.get("email", "").strip().lower()
+    role = request.form.get("role", "editor").strip()
+    if role not in WALLET_ROLES:
+        return "Invalid wallet role", 400
+    user = get_db().execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()
+    if user is None:
+        flash("That email must belong to an existing HisabSmart user.", "error")
+    else:
+        try:
+            get_db().execute(
+                "INSERT INTO shared_wallet_members (wallet_id, user_id, role) VALUES (?, ?, ?)",
+                (wallet_id, user["id"], role),
+            )
+            get_db().commit()
+            flash("Member added to the wallet.", "success")
+        except sqlite3.IntegrityError:
+            flash("That user is already a wallet member.", "error")
+    return redirect(url_for("main.wallet_detail", wallet_id=wallet_id))
+
+
+@main_bp.post("/wallets/<int:wallet_id>/members/<int:user_id>/role")
+@login_required
+def update_wallet_role(wallet_id: int, user_id: int):
+    if wallet_access(wallet_id, "owner") is None:
+        return "Owner permission required", 403
+    role = request.form.get("role", "")
+    if role not in WALLET_ROLES:
+        return "Invalid wallet role", 400
+    if user_id == g.user["id"]:
+        return "The wallet owner role cannot be changed", 400
+    db = get_db()
+    db.execute("UPDATE shared_wallet_members SET role=? WHERE wallet_id=? AND user_id=?", (role, wallet_id, user_id))
+    db.commit()
+    return redirect(url_for("main.wallet_detail", wallet_id=wallet_id))
+
+
+@main_bp.post("/wallets/<int:wallet_id>/settle")
+@login_required
+def settle_wallet(wallet_id: int):
+    if wallet_access(wallet_id, "editor") is None:
+        return "Editor permission required", 403
+    try:
+        from_user_id = int(request.form.get("from_user_id", ""))
+        to_user_id = int(request.form.get("to_user_id", ""))
+        amount = float(request.form.get("amount", ""))
+        settled_at = date.fromisoformat(request.form.get("settled_at", ""))
+    except (ValueError, TypeError):
+        flash("Enter valid settlement details.", "error")
+        return redirect(url_for("main.wallet_detail", wallet_id=wallet_id))
+    member_ids = {row["user_id"] for row in wallet_members(wallet_id)}
+    if not math.isfinite(amount) or from_user_id == to_user_id or amount <= 0 or {from_user_id, to_user_id} - member_ids:
+        return "Invalid settlement participants", 400
+    db = get_db()
+    db.execute(
+        "INSERT INTO wallet_settlements (wallet_id, from_user_id, to_user_id, amount, settled_at, note) VALUES (?, ?, ?, ?, ?, ?)",
+        (wallet_id, from_user_id, to_user_id, amount, settled_at.isoformat(), request.form.get("note", "").strip()[:500]),
+    )
+    db.commit()
+    flash("Settlement recorded. No money was transferred.", "success")
+    return redirect(url_for("main.wallet_detail", wallet_id=wallet_id))
+
+
+@main_bp.route("/assistant", methods=("GET",))
+@login_required
+def assistant():
+    return render_template("assistant.html", initial_insights=build_insights(g.user["id"]))
+
+
+@main_bp.post("/api/assistant/ask")
+@login_required
+def ask_assistant():
+    payload = request.get_json(silent=True) or request.form
+    question = payload.get("question", "")
+    try:
+        result = answer_question(g.user["id"], question)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception:
+        current_app.logger.exception("Financial assistant request failed")
+        return jsonify({
+            "error": "The assistant is temporarily unavailable. Your financial records were not changed."
+        }), 503
+    return jsonify(result)
 
 
 def report_window(period: str, start_value: str | None, end_value: str | None) -> tuple[date, date]:
@@ -1122,7 +1397,7 @@ def export_report(export_format: str):
     document = SimpleDocTemplate(stream, pagesize=letter)
     styles = getSampleStyleSheet()
     content = [Paragraph("HisabSmart financial report", styles["Title"]), Paragraph(f"{start} to {end}", styles["Normal"]), Spacer(1, 12)]
-    content.append(Paragraph(f"Income: ₹{data['income']:.2f} · Expenses: ₹{data['expenses']:.2f} · Cash flow: ₹{data['cash_flow']:.2f}", styles["Normal"]))
+    content.append(Paragraph(f"Income: Rs. {data['income']:.2f} - Expenses: Rs. {data['expenses']:.2f} - Cash flow: Rs. {data['cash_flow']:.2f}", styles["Normal"]))
     table = Table(rows[:1] + rows[1:101], repeatRows=1)
     table.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#FF5A1F")), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("GRID", (0, 0), (-1, -1), 0.25, colors.lightgrey)]))
     content.extend([Spacer(1, 12), table])
@@ -1153,7 +1428,7 @@ def validate_recurring_form(form):
         date.fromisoformat(due_date)
     except (ValueError, TypeError):
         return None, "Enter a valid amount and next payment date."
-    if not title or len(title) > 160 or frequency not in RECURRING_FREQUENCIES or amount <= 0:
+    if not math.isfinite(amount) or not title or len(title) > 160 or frequency not in RECURRING_FREQUENCIES or amount <= 0:
         return None, "Enter a title, positive amount, and valid frequency."
     if len(category) > 80 or len(vendor) > 120 or len(notes) > 2000:
         return None, "Category, vendor, or notes are too long."

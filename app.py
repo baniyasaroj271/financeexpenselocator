@@ -20,11 +20,12 @@ def create_app(test_config: dict | None = None) -> Flask:
         DATABASE=str(BASE_DIR / "hisabsmart.db"),
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
-        SESSION_COOKIE_SECURE=False,
+        SESSION_COOKIE_SECURE=os.environ.get("HISABSMART_SESSION_COOKIE_SECURE", "").lower() in {"1", "true", "yes"},
         MAX_CONTENT_LENGTH=5 * 1024 * 1024,
         UPLOAD_FOLDER=str(BASE_DIR / "instance" / "uploads" / "receipts"),
         GOODS_UPLOAD_FOLDER=str(BASE_DIR / "instance" / "uploads" / "goods"),
         OCR_UPLOAD_FOLDER=str(BASE_DIR / "instance" / "uploads" / "ocr"),
+        ENABLE_SCHEDULER=os.environ.get("ENABLE_SCHEDULER", "true").lower() in {"1", "true", "yes"},
     )
     if test_config:
         app.config.update(test_config)

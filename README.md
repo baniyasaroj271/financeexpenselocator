@@ -22,6 +22,8 @@ HisabSmart is a polished personal finance dashboard starter built with Flask, SQ
 - Receipt scanning with isolated Tesseract OCR extraction, editable review, duplicate protection, and optional inventory item creation
 - Analytics and reports with period filters, category/vendor insights, comparisons, and authenticated CSV, Excel, and PDF exports
 - Recurring bills and subscriptions with weekly, monthly, quarterly, and yearly schedules, pause/resume/cancel controls, payment history, duplicate warnings, and price-increase detection
+- Private AI financial assistant with authenticated spending answers, affordability checks, anomaly detection, duplicate alerts, budget-overrun predictions, and month-end cash-flow estimates
+- Shared wallets for trips, roommates, and households with invitations, view-only/editor access, equal or proportional bill splits, balances, debt suggestions, and offline settlement tracking
 
 ## Run locally
 
@@ -38,13 +40,30 @@ HisabSmart is a polished personal finance dashboard starter built with Flask, SQ
    pip install -r requirements.txt
    ```
 
-3. Start the app:
+3. Configure the environment:
 
    ```powershell
-   python app.py
+   Copy-Item .env.example .env
+   $env:HISABSMART_SECRET_KEY = "replace-with-a-long-random-production-secret"
    ```
 
-4. Open <http://127.0.0.1:5000> in your browser.
+   Flask does not load `.env` automatically in this application, so set variables in the shell, your process manager, or deployment environment. Use `HISABSMART_SESSION_COOKIE_SECURE=true` behind HTTPS. Set `ENABLE_SCHEDULER=false` for test processes or when another worker owns recurring-payment scheduling.
+
+4. Initialize the database:
+
+   ```powershell
+   flask --app app init-db
+   ```
+
+   Initialization is also performed automatically when the application starts. Existing databases are migrated without replacing user records.
+
+5. Start the app:
+
+   ```powershell
+   python run.py
+   ```
+
+6. Open <http://127.0.0.1:5000> in your browser.
 
 The first run creates `hisabsmart.db`. Dashboard values are calculated from the signed-in user's SQLite records. You can also run `flask --app app init-db` to initialize it explicitly.
 
@@ -64,7 +83,19 @@ Open **Analytics & reports** to review weekly, monthly, yearly, or custom-period
 
 Open **Recurring payments** to create a subscription or bill schedule. The background scheduler creates at most one transaction per payment and due date using a database uniqueness constraint, advances missed schedules, and records payment history. Use `ENABLE_SCHEDULER=false` in tests or one-off scripts when the background worker is not wanted.
 
+## AI financial assistant
+
+Open **AI assistant** to ask questions about your finances. The assistant calculates answers from the signed-in user's SQLite records on the server, including current-month spending, biggest expenses, affordability checks, duplicate transaction groups, unusual expenses, budget-overrun risks, and estimated month-end cash flow. Saved transactions are never sent to a browser-side model or third-party service, and every assistant request is protected by the login session and CSRF validation.
+
+Responses label saved-record answers as **Actual data** and pace-based calculations as **Prediction**. Predictions are estimates rather than guarantees. If an assistant calculation fails, the API returns a safe error without modifying financial records.
+
+## Shared wallets
+
+Open **Shared wallets** to create a wallet for a trip, roommates, or a household. Wallet owners can add existing HisabSmart users as editors or view-only members. Editors can record shared expenses and settlements; view-only members can inspect balances without changing records. Expenses support equal or proportional splits, and balances calculate who owes whom. Settlement records are bookkeeping entries only and never initiate money transfers. Every wallet, member, expense, split, and settlement query is scoped through authenticated membership checks.
+
 Goods photos accept valid PNG, JPG, JPEG, and WEBP images. Goods receipts accept valid PDFs or images. Uploads are stored under `instance/uploads/goods`, use generated filenames, and are served only after checking the signed-in user's ownership.
+
+Uploads are limited to 5 MB and use generated server-side filenames. Goods and OCR uploads are checked against file signatures as well as extensions; transaction receipt attachments are restricted by extension and size. Never expose the upload directories as static web folders.
 
 ## Test authentication and isolation
 
@@ -80,7 +111,10 @@ pytest
 ├── auth.py
 ├── db.py
 ├── routes.py
+├── financial_assistant.py
+├── scheduler.py
 ├── requirements.txt
+├── .env.example
 ├── README.md
 ├── templates/
 │   ├── base.html
@@ -89,7 +123,12 @@ pytest
 │   ├── transactions.html
 │   ├── goods.html
 │   ├── good_form.html
-│   └── good_detail.html
+│   ├── good_detail.html
+│   ├── reports.html
+│   ├── recurring.html
+│   ├── assistant.html
+│   ├── wallets.html
+│   └── wallet_detail.html
 └── static/
     ├── css/style.css
     └── js/app.js
@@ -97,6 +136,8 @@ pytest
     ├── test_auth.py
     ├── test_transactions.py
     ├── test_goods.py
-    └── test_budgets.py
+    ├── test_budgets.py
+    ├── test_receipt_ocr.py
+    ├── test_assistant.py
+    └── test_wallets.py
 ```
-# financeexpenselocator

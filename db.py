@@ -135,10 +135,38 @@ CREATE TABLE IF NOT EXISTS shared_wallets (
 CREATE TABLE IF NOT EXISTS shared_wallet_members (
     wallet_id INTEGER NOT NULL REFERENCES shared_wallets(id) ON DELETE CASCADE,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('owner', 'member')),
+    role TEXT NOT NULL DEFAULT 'editor' CHECK (role IN ('owner', 'editor', 'viewer')),
     PRIMARY KEY (wallet_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS idx_wallet_members_user ON shared_wallet_members(user_id);
+CREATE TABLE IF NOT EXISTS wallet_expenses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    wallet_id INTEGER NOT NULL REFERENCES shared_wallets(id) ON DELETE CASCADE,
+    paid_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    title TEXT NOT NULL,
+    amount REAL NOT NULL CHECK (amount > 0),
+    expense_date TEXT NOT NULL,
+    split_method TEXT NOT NULL CHECK (split_method IN ('equal', 'proportional')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_wallet_expenses_wallet ON wallet_expenses(wallet_id);
+CREATE TABLE IF NOT EXISTS wallet_expense_splits (
+    expense_id INTEGER NOT NULL REFERENCES wallet_expenses(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    share_amount REAL NOT NULL CHECK (share_amount >= 0),
+    proportion REAL,
+    PRIMARY KEY (expense_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS wallet_settlements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    wallet_id INTEGER NOT NULL REFERENCES shared_wallets(id) ON DELETE CASCADE,
+    from_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    to_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    amount REAL NOT NULL CHECK (amount > 0),
+    settled_at TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_wallet_settlements_wallet ON wallet_settlements(wallet_id);
 """
 
 
@@ -161,6 +189,7 @@ def close_db(_: Any = None) -> None:
 def init_db() -> None:
     db = get_db()
     migrate_legacy_tables(db)
+    migrate_wallet_member_roles(db)
     db.executescript(SCHEMA)
     if db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='budgets_legacy'").fetchone():
         db.execute(
@@ -178,6 +207,34 @@ def init_db() -> None:
         )
         db.execute("DROP TABLE budgets_legacy")
     db.commit()
+
+
+def migrate_wallet_member_roles(db: sqlite3.Connection) -> None:
+    """Upgrade the original owner/member wallet roles without losing members."""
+    table = db.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='shared_wallet_members'"
+    ).fetchone()
+    if table and "role IN ('owner', 'member')" in (table["sql"] or ""):
+        db.execute("ALTER TABLE shared_wallet_members RENAME TO shared_wallet_members_legacy")
+        db.execute(
+            """
+            CREATE TABLE shared_wallet_members (
+                wallet_id INTEGER NOT NULL REFERENCES shared_wallets(id) ON DELETE CASCADE,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                role TEXT NOT NULL DEFAULT 'editor' CHECK (role IN ('owner', 'editor', 'viewer')),
+                PRIMARY KEY (wallet_id, user_id)
+            )
+            """
+        )
+        db.execute(
+            """
+            INSERT INTO shared_wallet_members (wallet_id, user_id, role)
+            SELECT wallet_id, user_id, CASE WHEN role='owner' THEN 'owner' ELSE 'editor' END
+            FROM shared_wallet_members_legacy
+            """
+        )
+        db.execute("DROP TABLE shared_wallet_members_legacy")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_wallet_members_user ON shared_wallet_members(user_id)")
 
 
 def migrate_legacy_tables(db: sqlite3.Connection) -> None:

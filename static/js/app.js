@@ -11,6 +11,24 @@ document.addEventListener("DOMContentLoaded", () => {
     backdrop?.addEventListener("click", () => toggleSidebar(false));
     sidebar?.querySelectorAll("a").forEach((link) => link.addEventListener("click", () => toggleSidebar(false)));
 
+    document.querySelectorAll("form").forEach((form) => {
+        const action = form.getAttribute("action") || "";
+        const submitButton = form.querySelector("button[type='submit']");
+        const requiresConfirmation = form.dataset.confirm || action.includes("/delete") || action.includes("/cancel");
+        form.addEventListener("submit", (event) => {
+            if (requiresConfirmation && !window.confirm(form.dataset.confirm || "Are you sure you want to continue?")) {
+                event.preventDefault();
+                return;
+            }
+            if (submitButton) {
+                submitButton.disabled = true;
+                submitButton.classList.add("is-loading");
+                submitButton.dataset.originalText = submitButton.textContent;
+                submitButton.textContent = "Working...";
+            }
+        });
+    });
+
     const dataElement = document.querySelector("#dashboard-data");
     if (!dataElement || typeof Chart === "undefined") return;
     const data = JSON.parse(dataElement.textContent);

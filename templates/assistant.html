@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}AI financial assistant{% endblock %}
+{% block content %}
+<div class="page-container assistant-page">
+    <section class="section-heading">
+        <div><p class="eyebrow">Your private money guide</p><h1>AI financial assistant</h1><p class="subheading">Ask about your own records. Answers are calculated on the server and never expose another user's data.</p></div>
+    </section>
+    <section class="assistant-layout">
+        <div class="panel assistant-chat">
+            <div class="assistant-examples">
+                <button type="button" data-question="How much did I spend this month?">How much did I spend this month?</button>
+                <button type="button" data-question="What is my biggest expense?">What is my biggest expense?</button>
+                <button type="button" data-question="Can I afford an Rs. 1,200 purchase?">Can I afford an Rs. 1,200 purchase?</button>
+                <button type="button" data-question="Are any budgets predicted to go over?">Budget overrun prediction</button>
+            </div>
+            <div id="assistantMessages" class="assistant-messages" aria-live="polite">
+                <div class="assistant-message"><strong>HisabSmart assistant</strong><p>I can explain your actual spending and clearly label predictions. What would you like to know?</p></div>
+            </div>
+            <form id="assistantForm" class="assistant-form">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                <input id="assistantQuestion" name="question" maxlength="500" required placeholder="Ask a question about your finances..." autocomplete="off">
+                <button class="primary-button" type="submit">Ask</button>
+            </form>
+            <p id="assistantError" class="assistant-error" hidden></p>
+        </div>
+        <aside class="panel assistant-insights">
+            <h2>Money signals</h2>
+            <p class="muted">These are calculated from your records. Predictions are estimates, not guarantees.</p>
+            <div class="insight-card"><span>Actual spending this month</span><strong id="actualExpenses">Rs. {{ '%.2f'|format(initial_insights.actual.expenses) }}</strong></div>
+            <div class="insight-card"><span>Actual cash flow</span><strong id="actualCashFlow">Rs. {{ '%.2f'|format(initial_insights.actual.cash_flow) }}</strong></div>
+            <div class="insight-card prediction"><span>Predicted month-end cash flow</span><strong id="projectedCashFlow">Rs. {{ '%.2f'|format(initial_insights.predictions.month_end.projected_cash_flow) }}</strong></div>
+            <p class="assistant-disclaimer">Actual = saved transactions. Prediction = pace-based estimate using this month's records.</p>
+        </aside>
+    </section>
+</div>
+<script>
+(() => {
+    const form = document.getElementById('assistantForm');
+    const input = document.getElementById('assistantQuestion');
+    const messages = document.getElementById('assistantMessages');
+    const error = document.getElementById('assistantError');
+    const csrf = form.querySelector('input[name="_csrf_token"]').value;
+    const money = value => `Rs. ${Number(value || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+    const addMessage = (label, text, className) => {
+        const item = document.createElement('div');
+        item.className = `assistant-message ${className || ''}`;
+        const strong = document.createElement('strong');
+        strong.textContent = label;
+        const paragraph = document.createElement('p');
+        paragraph.textContent = text;
+        item.append(strong, paragraph);
+        messages.append(item);
+        messages.scrollTop = messages.scrollHeight;
+    };
+    const ask = async question => {
+        addMessage('You', question, 'user-message');
+        error.hidden = true;
+        const response = await fetch('{{ url_for("main.ask_assistant") }}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
+            body: JSON.stringify({question})
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'The assistant is temporarily unavailable.');
+        addMessage(`HisabSmart assistant · ${data.basis === 'prediction' ? 'Prediction' : 'Actual data'}`, data.answer);
+        document.getElementById('actualExpenses').textContent = money(data.insights.actual.expenses);
+        document.getElementById('actualCashFlow').textContent = money(data.insights.actual.cash_flow);
+        document.getElementById('projectedCashFlow').textContent = money(data.insights.predictions.month_end.projected_cash_flow);
+    };
+    form.addEventListener('submit', async event => {
+        event.preventDefault();
+        const question = input.value.trim();
+        if (!question) return;
+        input.value = '';
+        try { await ask(question); } catch (requestError) { error.textContent = requestError.message; error.hidden = false; }
+    });
+    document.querySelectorAll('[data-question]').forEach(button => button.addEventListener('click', () => {
+        input.value = button.dataset.question;
+        input.focus();
+    }));
+})();
+</script>
+{% endblock %}

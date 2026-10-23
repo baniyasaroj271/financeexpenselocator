@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}{{ page_title }}{% endblock %}
+{% block content %}
+<div class="page-container">
+    <section class="section-heading">
+        <div><p class="eyebrow">{{ eyebrow }}</p><h1>{{ page_title }}</h1><p class="subheading">{{ message }}</p></div>
+    </section>
+    <section class="panel empty-state management-empty">
+        <strong>{{ page_title }} are ready for future integrations.</strong>
+        <p>No external data is being imported or shared. Use the existing transaction, inventory, wallet, and report features to manage your records.</p>
+        <a class="primary-button" href="{{ url_for('main.dashboard') }}">Return to overview</a>
+    </section>
+</div>
+{% endblock %}
